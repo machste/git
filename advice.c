@@ -29,10 +29,43 @@ int advice_ignored_hook = 1;
 int advice_waiting_for_editor = 1;
 int advice_graft_file_deprecated = 1;
 int advice_checkout_ambiguous_remote_branch_name = 1;
-int advice_nested_tag = 1;
 int advice_submodule_alternate_error_strategy_die = 1;
 int advice_add_ignored_file = 1;
 int advice_add_empty_pathspec = 1;
+
+const char ADVICE_ADD_EMBEDDED_REPO[] = "advice.addEmbeddedRepo";
+const char ADVICE_AM_WORK_DIR[] = "advice.amWorkDir";
+const char ADVICE_CHECKOUT_AMBIGUOUS_REMOTE_BRANCH_NAME[] = "advice.checkoutAmbiguousRemoteBranchName";
+const char ADVICE_COMMIT_BEFORE_MERGE[] = "advice.commitBeforeMerge";
+const char ADVICE_DETACHED_HEAD[] = "advice.detachedHead";
+const char ADVICE_FETCH_SHOW_FORCED_UPDATES[] = "advice.fetchShowForcedUpdates";
+const char ADVICE_GRAFT_FILE_DEPRECATED[] = "advice.graftFileDeprecated";
+const char ADVICE_IGNORED_HOOK[] = "advice.ignoredHook";
+const char ADVICE_IMPLICIT_IDENTITY[] = "advice.implicitIdentity";
+const char ADVICE_NESTED_TAG[] = "advice.nestedTag";
+const char ADVICE_OBJECT_NAME_WARNING[] = "advice.objectNameWarning";
+const char ADVICE_PUSH_ALREADY_EXISTS[] = "advice.pushAlreadyExists";
+const char ADVICE_PUSH_FETCH_FIRST[] = "advice.pushFetchFirst";
+const char ADVICE_PUSH_NEEDS_FORCE[] = "advice.pushNeedsForce";
+const char ADVICE_PUSH_NON_FF_CURRENT[] = "advice.pushNonFFCurrent";
+const char ADVICE_PUSH_NON_FF_MATCHING[] = "advice.pushNonFFMatching";
+const char ADVICE_PUSH_UNQUALIFIED_REF_NAME[] = "advice.pushUnqualifiedRefName";
+const char ADVICE_PUSH_UPDATE_REJECTED[] = "advice.pushUpdateRejected";
+
+/* make this an alias for backward compatibility */
+const char ADVICE_PUSH_UPDATE_REJECTED_ALIAS[] = "advice.pushNonFastForward";
+
+const char ADVICE_RESET_QUIET_WARNING[] = "advice.resetQuiet";
+const char ADVICE_RESOLVE_CONFLICT[] = "advice.resolveConflict";
+const char ADVICE_RM_HINTS[] = "advice.rmHints";
+const char ADVICE_SEQUENCER_IN_USE[] = "advice.sequencerInUse";
+const char ADVICE_SET_UPSTREAM_FAILURE[] = "advice.setUpstreamFailure";
+const char ADVICE_STATUS_AHEAD_BEHIND_WARNING[] = "advice.statusAheadBehindWarning";
+const char ADVICE_STATUS_HINTS[] = "advice.statusHints";
+const char ADVICE_STATUS_U_OPTION[] = "advice.statusUoption";
+const char ADVICE_SUBMODULE_ALTERNATE_ERROR_STRATEGY_DIE[] = "advice.submoduleAlternateErrorStrategyDie";
+const char ADVICE_WAITING_FOR_EDITOR[] = "advice.waitingForEditor";
+
 
 static int advice_use_color = -1;
 static char advice_colors[][COLOR_MAXLEN] = {
@@ -82,7 +115,7 @@ static struct {
 	{ "sequencerInUse", &advice_sequencer_in_use },
 	{ "implicitIdentity", &advice_implicit_identity },
 	{ "detachedHead", &advice_detached_head },
-	{ "setupStreamFailure", &advice_set_upstream_failure },
+	{ "setUpstreamFailure", &advice_set_upstream_failure },
 	{ "objectNameWarning", &advice_object_name_warning },
 	{ "amWorkDir", &advice_amworkdir },
 	{ "rmHints", &advice_rm_hints },
@@ -91,7 +124,6 @@ static struct {
 	{ "waitingForEditor", &advice_waiting_for_editor },
 	{ "graftFileDeprecated", &advice_graft_file_deprecated },
 	{ "checkoutAmbiguousRemoteBranchName", &advice_checkout_ambiguous_remote_branch_name },
-	{ "nestedTag", &advice_nested_tag },
 	{ "submoduleAlternateErrorStrategyDie", &advice_submodule_alternate_error_strategy_die },
 	{ "addIgnoredFile", &advice_add_ignored_file },
 	{ "addEmptyPathspec", &advice_add_empty_pathspec },
@@ -100,15 +132,52 @@ static struct {
 	{ "pushNonFastForward", &advice_push_update_rejected }
 };
 
-void advise(const char *advice, ...)
+static const char *advice_config_keys[] = {
+	ADVICE_ADD_EMBEDDED_REPO,
+	ADVICE_AM_WORK_DIR,
+	ADVICE_CHECKOUT_AMBIGUOUS_REMOTE_BRANCH_NAME,
+	ADVICE_COMMIT_BEFORE_MERGE,
+	ADVICE_DETACHED_HEAD,
+	ADVICE_FETCH_SHOW_FORCED_UPDATES,
+	ADVICE_GRAFT_FILE_DEPRECATED,
+	ADVICE_IGNORED_HOOK,
+	ADVICE_IMPLICIT_IDENTITY,
+	ADVICE_NESTED_TAG,
+	ADVICE_OBJECT_NAME_WARNING,
+	ADVICE_PUSH_ALREADY_EXISTS,
+	ADVICE_PUSH_FETCH_FIRST,
+	ADVICE_PUSH_NEEDS_FORCE,
+	ADVICE_PUSH_UPDATE_REJECTED_ALIAS,
+	ADVICE_PUSH_NON_FF_CURRENT,
+	ADVICE_PUSH_NON_FF_MATCHING,
+	ADVICE_PUSH_UNQUALIFIED_REF_NAME,
+	ADVICE_PUSH_UPDATE_REJECTED,
+	ADVICE_RESET_QUIET_WARNING,
+	ADVICE_RESOLVE_CONFLICT,
+	ADVICE_RM_HINTS,
+	ADVICE_SEQUENCER_IN_USE,
+	ADVICE_SET_UPSTREAM_FAILURE,
+	ADVICE_STATUS_AHEAD_BEHIND_WARNING,
+	ADVICE_STATUS_HINTS,
+	ADVICE_STATUS_U_OPTION,
+	ADVICE_SUBMODULE_ALTERNATE_ERROR_STRATEGY_DIE,
+	ADVICE_WAITING_FOR_EDITOR,
+};
+
+static const char turn_off_instructions[] =
+N_("\n"
+   "Disable this message with \"git config %s false\"");
+
+static void vadvise(const char *advice, int display_instructions,
+		    const char *key, va_list params)
 {
 	struct strbuf buf = STRBUF_INIT;
-	va_list params;
 	const char *cp, *np;
 
-	va_start(params, advice);
 	strbuf_vaddf(&buf, advice, params);
-	va_end(params);
+
+	if (display_instructions)
+		strbuf_addf(&buf, turn_off_instructions, key);
 
 	for (cp = buf.buf; *cp; cp = np) {
 		np = strchrnul(cp, '\n');
@@ -120,6 +189,43 @@ void advise(const char *advice, ...)
 			np++;
 	}
 	strbuf_release(&buf);
+}
+
+void advise(const char *advice, ...)
+{
+	va_list params;
+	va_start(params, advice);
+	vadvise(advice, 0, "", params);
+	va_end(params);
+}
+
+static int get_config_value(const char *advice_key)
+{
+	int value = 1;
+
+	git_config_get_bool(advice_key, &value);
+	return value;
+}
+
+int advice_enabled(const char *advice_key)
+{
+	if (advice_key == ADVICE_PUSH_UPDATE_REJECTED)
+		return get_config_value(ADVICE_PUSH_UPDATE_REJECTED) &&
+		       get_config_value(ADVICE_PUSH_UPDATE_REJECTED_ALIAS);
+	else
+		return get_config_value(advice_key);
+}
+
+void advise_if_enabled(const char *advice_key, const char *advice, ...)
+{
+	va_list params;
+
+	if (!advice_enabled(advice_key))
+		return;
+
+	va_start(params, advice);
+	vadvise(advice, 1, advice_key, params);
+	va_end(params);
 }
 
 int git_default_advice_config(const char *var, const char *value)
@@ -158,8 +264,8 @@ void list_config_advices(struct string_list *list, const char *prefix)
 {
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(advice_config); i++)
-		list_config_item(list, prefix, advice_config[i].name);
+	for (i = 0; i < ARRAY_SIZE(advice_config_keys); i++)
+		list_config_item(list, prefix, advice_config_keys[i]);
 }
 
 int error_resolve_conflict(const char *me)
